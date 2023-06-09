@@ -1,0 +1,9 @@
+<library path="hebi_hardware">
+  <class name="hebi_hardware/HEBIHardwareInterface"
+         type="hebi_hardware::HEBIHardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ros2_control hardware interface.
+    </description>
+  </class>
+</library>
