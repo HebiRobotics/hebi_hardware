@@ -148,7 +148,11 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
     std::cout << COUT_INFO << "Gains file loaded!" << std::endl;
   }
 
+  this->arm_->update();
+
   // make sure commands are equal to the states on activation
+  joint_pos_commands_ = joint_pos_states_;
+  joint_vel_commands_ = joint_vel_states_;
 
   return CallbackReturn::SUCCESS;
 }
@@ -167,11 +171,51 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_shutdown(const rclc
 hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) {
   // read robot states
 
+  if (!this->arm_->update()) {
+    return hardware_interface::return_type::ERROR;
+  }
+
+  auto pos = this->arm_->lastFeedback().getPosition();
+  auto vel = this->arm_->lastFeedback().getVelocity();
+  auto acc = this->arm_->lastFeedback().getEffort();
+
+  for (size_t i = 0; i < info_.joints.size(); ++i) {
+    joint_pos_states_[i] = pos[i];
+    joint_vel_states_[i] = vel[i];
+    joint_acc_states_[i] = acc[i];
+  }
+
   return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) {
-  // write robot's commands'
+  // write robot's commands
+  auto command = this->arm_->pendingCommand();
+
+  // Eigen::VectorXd pos(info_.joints.size());
+  // Eigen::VectorXd vel(info_.joints.size());
+
+  // for (size_t i = 0; i < info_.joints.size(); ++i) {
+  //   if (std::isnan(joint_pos_commands_[i])) {
+  //     pos.setConstant(std::numeric_limits<double>::quiet_NaN());
+  //     break;
+  //   } 
+  //   pos[i] = joint_pos_commands_[i];
+  // }
+  // for (size_t i = 0; i < info_.joints.size(); ++i) {
+  //   if (std::isnan(joint_vel_commands_[i])) {
+  //     vel.setConstant(std::numeric_limits<double>::quiet_NaN());
+  //     break;
+  //   } 
+  //   vel[i] = joint_vel_commands_[i];
+  // }
+
+  // command.setPosition(pos);
+  // command.setVelocity(vel);
+
+  // if (!this->arm_->send()) {
+  //   return hardware_interface::return_type::ERROR;
+  // }
 
   return hardware_interface::return_type::OK;
 }
