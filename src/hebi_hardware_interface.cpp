@@ -190,32 +190,32 @@ hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time &
 
 hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) {
   // write robot's commands
-  auto command = this->arm_->pendingCommand();
+  auto& command = this->arm_->pendingCommand();
 
-  // Eigen::VectorXd pos(info_.joints.size());
-  // Eigen::VectorXd vel(info_.joints.size());
+  Eigen::VectorXd pos(info_.joints.size());
+  Eigen::VectorXd vel(info_.joints.size());
 
-  // for (size_t i = 0; i < info_.joints.size(); ++i) {
-  //   if (std::isnan(joint_pos_commands_[i])) {
-  //     pos.setConstant(std::numeric_limits<double>::quiet_NaN());
-  //     break;
-  //   } 
-  //   pos[i] = joint_pos_commands_[i];
-  // }
-  // for (size_t i = 0; i < info_.joints.size(); ++i) {
-  //   if (std::isnan(joint_vel_commands_[i])) {
-  //     vel.setConstant(std::numeric_limits<double>::quiet_NaN());
-  //     break;
-  //   } 
-  //   vel[i] = joint_vel_commands_[i];
-  // }
+  for (size_t i = 0; i < info_.joints.size(); ++i) {
+    if (std::isnan(joint_pos_commands_[i])) {
+      pos.setConstant(std::numeric_limits<double>::quiet_NaN());
+      break;
+    } 
+    pos[i] = joint_pos_commands_[i];
+  }
+  for (size_t i = 0; i < info_.joints.size(); ++i) {
+    if (std::isnan(joint_vel_commands_[i])) {
+      vel.setConstant(std::numeric_limits<double>::quiet_NaN());
+      break;
+    } 
+    vel[i] = joint_vel_commands_[i];
+  }
 
-  // command.setPosition(pos);
-  // command.setVelocity(vel);
+  command.setPosition(pos);
+  command.setVelocity(vel);
 
-  // if (!this->arm_->send()) {
-  //   return hardware_interface::return_type::ERROR;
-  // }
+  if (!this->arm_->send()) {
+    return hardware_interface::return_type::ERROR;
+  }
 
   return hardware_interface::return_type::OK;
 }
