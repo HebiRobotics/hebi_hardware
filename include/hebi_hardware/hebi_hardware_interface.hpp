@@ -76,7 +76,10 @@ private:
   std::vector<std::string> position_command_interface_names_;
   std::vector<std::string> velocity_command_interface_names_;
 
-  std::string config_pkg;
+  std::string hrdf_pkg;
+  std::string hrdf_file;
+  std::string gains_pkg;
+  std::string gains_file;
   std::string robot_name;
 
   std::unique_ptr<hebi::experimental::arm::Arm> arm_;

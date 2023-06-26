@@ -56,8 +56,17 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
     if (i->first == "names") {
       this->params_.names_ = split(i->second, ';');
     }
-    if (i->first == "config_pkg") {
-      this->config_pkg = i->second;
+    if (i->first == "hrdf_pkg") {
+      this->hrdf_pkg = i->second;
+    }
+    if (i->first == "hrdf)file") {
+      this->hrdf_file = i->second;
+    }
+    if (i->first == "gains_pkg") {
+      this->gains_pkg = i->second;
+    }
+    if (i->first == "gains)file") {
+      this->gains_file = i->second;
     }
   }
   
@@ -69,7 +78,11 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
   for (auto i = this->params_.names_.begin(); i != this->params_.names_.end(); i++) std::cout << *i << " ";
   std::cout << std::endl;
 
-  std::cout << "Config package: "<<this->config_pkg << std::endl;
+  std::cout << "HRDF package: "<<this->hrdf_pkg << std::endl;
+  std::cout << "HRDF file: "<<this->hrdf_file << std::endl;
+
+  std::cout << "Gains package: "<<this->gains_pkg << std::endl;
+  std::cout << "Gains file: "<<this->gains_file << std::endl;
 
   std::cout << "############################################################" << std::endl;
 
@@ -120,7 +133,7 @@ std::vector<hardware_interface::CommandInterface> HEBIHardwareInterface::export_
 
 hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclcpp_lifecycle::State & /*previous_state*/) {
   
-  this->params_.hrdf_file_ = ament_index_cpp::get_package_share_directory(config_pkg) + "/config/hrdf/" + robot_name + ".hrdf";
+  this->params_.hrdf_file_ = ament_index_cpp::get_package_share_directory(hrdf_pkg) + hrdf_file;
   for (int num_tries = 0; num_tries < 3; num_tries++) {
     this->arm_ = hebi::experimental::arm::Arm::create(this->params_);
     if (this->arm_) {
@@ -137,7 +150,7 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
     std::cout << COUT_INFO << "Arm initialized!" << std::endl;
   }
 
-  std::string gains_file = ament_index_cpp::get_package_share_directory(config_pkg) + "/config/gains/" + robot_name + "_gains.xml";
+  std::string gains_file = ament_index_cpp::get_package_share_directory(gains_pkg) + gains_file;
   std::cout << "Trying to load gains file at '"<<this->params_.hrdf_file_ << "'" << std::endl;
 
   // Load the appropriate gains file
