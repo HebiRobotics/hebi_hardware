@@ -59,13 +59,13 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
     if (i->first == "hrdf_pkg") {
       this->hrdf_pkg = i->second;
     }
-    if (i->first == "hrdf)file") {
+    if (i->first == "hrdf_file") {
       this->hrdf_file = i->second;
     }
     if (i->first == "gains_pkg") {
       this->gains_pkg = i->second;
     }
-    if (i->first == "gains)file") {
+    if (i->first == "gains_file") {
       this->gains_file = i->second;
     }
   }
@@ -133,7 +133,7 @@ std::vector<hardware_interface::CommandInterface> HEBIHardwareInterface::export_
 
 hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclcpp_lifecycle::State & /*previous_state*/) {
   
-  this->params_.hrdf_file_ = ament_index_cpp::get_package_share_directory(hrdf_pkg) + hrdf_file;
+  this->params_.hrdf_file_ = ament_index_cpp::get_package_share_directory(hrdf_pkg) + "/" + this->hrdf_file;
   for (int num_tries = 0; num_tries < 3; num_tries++) {
     this->arm_ = hebi::experimental::arm::Arm::create(this->params_);
     if (this->arm_) {
@@ -150,12 +150,12 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
     std::cout << COUT_INFO << "Arm initialized!" << std::endl;
   }
 
-  std::string gains_file = ament_index_cpp::get_package_share_directory(gains_pkg) + gains_file;
-  std::cout << "Trying to load gains file at '"<<this->params_.hrdf_file_ << "'" << std::endl;
+  std::string gains_file = ament_index_cpp::get_package_share_directory(gains_pkg) + "/" + this->gains_file;
+  std::cout << "Trying to load gains file at '"<<gains_file << "'" << std::endl;
 
   // Load the appropriate gains file
   if (!this->arm_->loadGains(gains_file)) {
-    std::cout << COUT_ERROR << "Could not load gains file and/or set arm gains. Attempting to continue." << std::endl;
+    std::cout << COUT_ERROR << "Could not load gains file and/or set arm gains. Aborting." << std::endl;
     return CallbackReturn::ERROR;
   } else {
     std::cout << COUT_INFO << "Gains file loaded!" << std::endl;
@@ -164,8 +164,8 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
   this->arm_->update();
 
   // make sure commands are equal to the states on activation
-  joint_pos_commands_ = joint_pos_states_;
-  joint_vel_commands_ = joint_vel_states_;
+  // joint_pos_commands_ = joint_pos_states_;
+  // joint_vel_commands_ = joint_vel_states_;
 
   return CallbackReturn::SUCCESS;
 }
