@@ -1,3 +1,4 @@
+// Copyright (c) 2023, HEBI Robotics Inc.
 // Copyright (c) 2022, Stogl Robotics Consulting UG (haftungsbeschränkt) (template)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,6 +69,13 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
     if (i->first == "gains_file") {
       this->gains_file = i->second;
     }
+    if (i->first == "home_position") {
+      std::vector<std::string> pos = split(i->second, ';');
+      this->home_position_ = Eigen::VectorXd(pos.size());
+      for (int i = 0; i < pos.size(); i++) {
+        this->home_position_[i] = std::stod(pos[i]);
+      }
+    }
   }
   
   std::cout << "Families: " << std::endl;
@@ -83,6 +91,17 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
 
   std::cout << "Gains package: "<<this->gains_pkg << std::endl;
   std::cout << "Gains file: "<<this->gains_file << std::endl;
+
+  // Print home position
+  std::cout << "Home position: " << std::endl;
+  for (int i = 0; i < this->home_position_.size(); i++) {
+    std::cout << i << ": " << this->home_position_[i];
+    if (i < this->home_position_.size() - 1) {
+      std::cout << ", ";
+    } else {
+      std::cout << std::endl;
+    }
+  }
 
   std::cout << "############################################################" << std::endl;
 
@@ -210,8 +229,8 @@ hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time 
 
   for (size_t i = 0; i < info_.joints.size(); ++i) {
     if (std::isnan(joint_pos_commands_[i])) {
-      pos.setConstant(std::numeric_limits<double>::quiet_NaN());
-      break;
+      pos[i] = home_position_[i];
+      continue;
     } 
     pos[i] = joint_pos_commands_[i];
   }
@@ -219,7 +238,7 @@ hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time 
     if (std::isnan(joint_vel_commands_[i])) {
       vel.setConstant(std::numeric_limits<double>::quiet_NaN());
       break;
-    } 
+    }
     vel[i] = joint_vel_commands_[i];
   }
 

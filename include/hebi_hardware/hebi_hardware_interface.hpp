@@ -1,3 +1,4 @@
+// Copyright (c) 2023, HEBI Robotics Inc.
 // Copyright (c) 2022, Stogl Robotics Consulting UG (haftungsbeschränkt) (template)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,6 +73,8 @@ private:
   std::vector<double> joint_pos_states_;
   std::vector<double> joint_vel_states_;
   std::vector<double> joint_acc_states_;
+
+  Eigen::VectorXd home_position_;
 
   std::vector<std::string> position_command_interface_names_;
   std::vector<std::string> velocity_command_interface_names_;
