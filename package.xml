@@ -2,12 +2,16 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>hebi_hardware</name>
-  <version>0.0.0</version>
-  <description>Hardware Interface for HEBI components</description>
+  <version>1.0.0</version>
+  
+  <description>ROS 2 Hardware Interface for HEBI components</description>
+  
   <maintainer email="chris@hebirobotics.com">Chris Bollinger</maintainer>
+  <maintainer email="hariharan@hebirobotics.com">Hariharan Ravichandran</maintainer>
+
   <author email="hariharan@hebirobotics.com">Hariharan Ravichandran</author>
   
-  <license>MIT</license>
+  <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
