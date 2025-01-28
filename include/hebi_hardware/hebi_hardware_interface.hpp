@@ -19,6 +19,7 @@
 // HEBI C++ API components
 #include "hebi_cpp_api/group_command.hpp"
 #include "hebi_cpp_api/robot_model.hpp"
+#include "hebi_cpp_api/robot_config.hpp"
 #include "hebi_cpp_api/arm/arm.hpp"
 
 #include <string>
@@ -74,19 +75,14 @@ private:
   std::vector<double> joint_vel_states_;
   std::vector<double> joint_acc_states_;
 
-  Eigen::VectorXd home_position_;
-
   std::vector<std::string> position_command_interface_names_;
   std::vector<std::string> velocity_command_interface_names_;
 
-  std::string hrdf_pkg;
-  std::string hrdf_file;
-  std::string gains_pkg;
-  std::string gains_file;
-  std::string robot_name;
+  std::string config_pkg_;
+  std::string config_file_;
+  std::unique_ptr<hebi::RobotConfig> arm_config_;
 
   std::unique_ptr<hebi::experimental::arm::Arm> arm_;
-  hebi::experimental::arm::Arm::Params params_;
 };
 
 }  // namespace hebi_hardware
