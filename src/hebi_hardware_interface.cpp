@@ -24,6 +24,7 @@
 #define COUT_WARN "[hebi_hardware] [WARN] "
 #define COUT_ERROR "[hebi_hardware] [ERROR] "
 
+namespace arm = hebi::experimental::arm;
 
 std::vector<std::string> split(const std::string &s, char delim) {
   std::vector<std::string> result;
@@ -43,78 +44,26 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
     return CallbackReturn::ERROR;
   }
 
-  std::cout << "############################################################" << std::endl;
-
-  std::cout << "########## Intializing HEBI Hardware Interface ##########" << std::endl;
-  std::cout << COUT_INFO << "Reading parameters ==>" << std::endl;
-
-  this->robot_name = info_.name;
-
+  // Read parameters
   for (auto i = info_.hardware_parameters.begin(); i != info_.hardware_parameters.end(); i++) {
-    if (i->first == "families") {
-      this->params_.families_ = split(i->second, ';');
-    }
-    if (i->first == "names") {
-      this->params_.names_ = split(i->second, ';');
-    }
-    if (i->first == "hrdf_pkg") {
-      this->hrdf_pkg = i->second;
-    }
-    if (i->first == "hrdf_file") {
-      this->hrdf_file = i->second;
-    }
-    if (i->first == "gains_pkg") {
-      this->gains_pkg = i->second;
-    }
-    if (i->first == "gains_file") {
-      this->gains_file = i->second;
-    }
-    if (i->first == "home_position") {
-      std::vector<std::string> pos = split(i->second, ';');
-      this->home_position_ = Eigen::VectorXd(pos.size());
-      for (int i = 0; i < pos.size(); i++) {
-        this->home_position_[i] = std::stod(pos[i]);
-      }
-    }
-  }
-  
-  std::cout << "Families: " << std::endl;
-  for (auto i = this->params_.families_.begin(); i != this->params_.families_.end(); i++) std::cout << *i << " ";
-  std::cout << std::endl;
-
-  std::cout << "Names: " << std::endl;
-  for (auto i = this->params_.names_.begin(); i != this->params_.names_.end(); i++) std::cout << *i << " ";
-  std::cout << std::endl;
-
-  std::cout << "HRDF package: "<<this->hrdf_pkg << std::endl;
-  std::cout << "HRDF file: "<<this->hrdf_file << std::endl;
-
-  std::cout << "Gains package: "<<this->gains_pkg << std::endl;
-  std::cout << "Gains file: "<<this->gains_file << std::endl;
-
-  // Print home position
-  std::cout << "Home position: " << std::endl;
-  for (int i = 0; i < this->home_position_.size(); i++) {
-    std::cout << i << ": " << this->home_position_[i];
-    if (i < this->home_position_.size() - 1) {
-      std::cout << ", ";
-    } else {
-      std::cout << std::endl;
-    }
+    if (i->first == "config_pkg") config_pkg_ = i->second;
+    if (i->first == "config_file") config_file_ = i->second;
   }
 
-  std::cout << "############################################################" << std::endl;
+  if (config_pkg_.empty() || config_file_.empty()) {
+    std::cout << COUT_ERROR << "Config package and/or file not provided! Aborting." << std::endl;
+    return CallbackReturn::ERROR;
+  }
+
+  std::cout << COUT_INFO << "Config package: "<< config_pkg_ << std::endl;
+  std::cout << COUT_INFO << "Config file: "<< config_file_ << std::endl;
 
   joint_pos_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  joint_vel_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+  joint_vel_commands_.resize(info_.joints.size(), 0.0);
   joint_pos_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   joint_vel_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   joint_acc_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
-  return CallbackReturn::SUCCESS;
-}
-
-hardware_interface::CallbackReturn HEBIHardwareInterface::on_configure(const rclcpp_lifecycle::State & /*previous_state*/) {
   return CallbackReturn::SUCCESS;
 }
 
@@ -150,41 +99,63 @@ std::vector<hardware_interface::CommandInterface> HEBIHardwareInterface::export_
   return command_interfaces;
 }
 
+hardware_interface::CallbackReturn HEBIHardwareInterface::on_configure(const rclcpp_lifecycle::State & /*previous_state*/) {
+  // Resolve the config file path using the package share directory
+  const std::string config_file_path = ament_index_cpp::get_package_share_directory(config_pkg_) + "/" + config_file_;
+
+  // Load the config
+  std::vector<std::string> errors;
+  arm_config_ = hebi::RobotConfig::loadConfig(config_file_path, errors);
+  for (const auto& error : errors) {
+    std::cout << COUT_ERROR << error.c_str();
+  }
+  if (!arm_config_) {
+    std::cout << COUT_ERROR << "Failed to load configuration from: " << config_file_path.c_str() << std::endl;
+    return CallbackReturn::ERROR;
+  }
+
+  return CallbackReturn::SUCCESS;
+}
+
 hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclcpp_lifecycle::State & /*previous_state*/) {
-  
-  this->params_.hrdf_file_ = ament_index_cpp::get_package_share_directory(hrdf_pkg) + "/" + this->hrdf_file;
-  for (int num_tries = 0; num_tries < 3; num_tries++) {
-    this->arm_ = hebi::experimental::arm::Arm::create(this->params_);
-    if (this->arm_) {
-      break;
+
+  // Create arm from config
+  arm_ = arm::Arm::create(*arm_config_);
+
+  // Terminate if arm not found
+  if (!arm_) {
+    std::cout << COUT_ERROR << "Failed to create arm!" << std::endl;
+    return CallbackReturn::ERROR;
+  }
+  std::cout << COUT_INFO << "Arm connected." << std::endl;
+
+  // Check if arm size is same as number of joints
+  if (arm_->size() != info_.joints.size()) {
+    std::cout << COUT_ERROR << "Number of joints in config file does not match number of joints in URDF!" << std::endl;
+    return CallbackReturn::ERROR;
+  }
+
+  // Check if home position is provided
+  if (arm_config_->getUserData().hasFloatList("home_position")) {
+    // Check that home_position has the right length
+    if (arm_config_->getUserData().getFloatList("home_position").size() != info_.joints.size())
+      std::cout << COUT_ERROR << "HEBI config \"user_data\"'s \"home_position\" field must have the same number of elements as degrees of freedom! Ignoring..." << std::endl;
+    else {
+      std::cout << COUT_INFO << "Found and successfully read 'home_position' parameter." << std::endl;
+      joint_pos_commands_ = arm_config_->getUserData().getFloatList("home_position");
     }
-    std::cout << COUT_WARN << "Could not initialize arm, trying again..." << std::endl;
-    rclcpp::sleep_for(std::chrono::seconds(1));
+  } 
+  else std::cout << COUT_WARN << "\"home_position\" not provided in config file. Not traveling to home." << std::endl;
+
+  arm_->update();
+  arm_->setGoal(arm::Goal::createFromPosition(3.0, Eigen::VectorXd::Map(joint_pos_commands_.data(), joint_pos_commands_.size())));
+
+  while (!arm_->atGoal()) {
+    if (!arm_->update())
+      std::cout << COUT_ERROR << "Could not update arm state! Please check connection" << std::endl;
+    else if (!arm_->send())
+      std::cout << COUT_ERROR << "Could not send commands! Please check connection" << std::endl;
   }
-
-  if (!this->arm_) {
-    std::cout << COUT_ERROR << "Could not initialize arm! Check for modules on the network, and ensure good connection (e.g., check packet loss plot in Scope)";
-    return CallbackReturn::ERROR;
-  } else  {
-    std::cout << COUT_INFO << "Arm initialized!" << std::endl;
-  }
-
-  std::string gains_file = ament_index_cpp::get_package_share_directory(gains_pkg) + "/" + this->gains_file;
-  std::cout << "Trying to load gains file at '"<<gains_file << "'" << std::endl;
-
-  // Load the appropriate gains file
-  if (!this->arm_->loadGains(gains_file)) {
-    std::cout << COUT_ERROR << "Could not load gains file and/or set arm gains. Aborting." << std::endl;
-    return CallbackReturn::ERROR;
-  } else {
-    std::cout << COUT_INFO << "Gains file loaded!" << std::endl;
-  }
-
-  this->arm_->update();
-
-  // make sure commands are equal to the states on activation
-  // joint_pos_commands_ = joint_pos_states_;
-  // joint_vel_commands_ = joint_vel_states_;
 
   return CallbackReturn::SUCCESS;
 }
@@ -203,13 +174,14 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_shutdown(const rclc
 hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) {
   // read robot states
 
-  if (!this->arm_->update()) {
+  if (!arm_->update()) {
+    std::cout << COUT_ERROR << "Could not update arm state! Please check connection" << std::endl;
     return hardware_interface::return_type::ERROR;
   }
 
-  auto pos = this->arm_->lastFeedback().getPosition();
-  auto vel = this->arm_->lastFeedback().getVelocity();
-  auto acc = this->arm_->lastFeedback().getEffort();
+  auto pos = arm_->lastFeedback().getPosition();
+  auto vel = arm_->lastFeedback().getVelocity();
+  auto acc = arm_->lastFeedback().getEffort();
 
   for (size_t i = 0; i < info_.joints.size(); ++i) {
     joint_pos_states_[i] = pos[i];
@@ -222,30 +194,16 @@ hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time &
 
 hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) {
   // write robot's commands
-  auto& command = this->arm_->pendingCommand();
+  auto& command = arm_->pendingCommand();
 
-  Eigen::VectorXd pos(info_.joints.size());
-  Eigen::VectorXd vel(info_.joints.size());
-
-  for (size_t i = 0; i < info_.joints.size(); ++i) {
-    if (std::isnan(joint_pos_commands_[i])) {
-      pos[i] = home_position_[i];
-      continue;
-    } 
-    pos[i] = joint_pos_commands_[i];
-  }
-  for (size_t i = 0; i < info_.joints.size(); ++i) {
-    if (std::isnan(joint_vel_commands_[i])) {
-      vel.setConstant(std::numeric_limits<double>::quiet_NaN());
-      break;
-    }
-    vel[i] = joint_vel_commands_[i];
-  }
+  Eigen::Map<Eigen::VectorXd> pos(joint_pos_commands_.data(), joint_pos_commands_.size());
+  Eigen::Map<Eigen::VectorXd> vel(joint_vel_commands_.data(), joint_vel_commands_.size());
 
   command.setPosition(pos);
   command.setVelocity(vel);
 
-  if (!this->arm_->send()) {
+  if (!arm_->send()) {
+    std::cout << COUT_ERROR << "Could not send commands! Please check connection" << std::endl;
     return hardware_interface::return_type::ERROR;
   }
 
