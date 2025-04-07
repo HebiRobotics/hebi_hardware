@@ -137,25 +137,29 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
 
   // Check if home position is provided
   if (arm_config_->getUserData().hasFloatList("home_position")) {
+    std::vector<double> home_pos_command(arm_->size(), std::numeric_limits<double>::quiet_NaN());
     // Check that home_position has the right length
     if (arm_config_->getUserData().getFloatList("home_position").size() != info_.joints.size())
       std::cout << COUT_ERROR << "HEBI config \"user_data\"'s \"home_position\" field must have the same number of elements as degrees of freedom! Ignoring..." << std::endl;
     else {
       std::cout << COUT_INFO << "Found and successfully read 'home_position' parameter." << std::endl;
-      joint_pos_commands_ = arm_config_->getUserData().getFloatList("home_position");
+      home_pos_command = arm_config_->getUserData().getFloatList("home_position");
     }
+
+    arm_->update();
+    arm_->setGoal(arm::Goal::createFromPosition(3.0, Eigen::VectorXd::Map(home_pos_command.data(), home_pos_command.size())));
+
+    std::cout << COUT_INFO << "Moving arm to home position. Please wait..." << std::endl;
+    while (!arm_->atGoal()) {
+      if (!arm_->update())
+        std::cout << COUT_ERROR << "Could not update arm state! Please check connection" << std::endl;
+      else if (!arm_->send())
+        std::cout << COUT_ERROR << "Could not send commands! Please check connection" << std::endl;
+    }
+
+    std::cout << COUT_INFO << "Arm successfully reached the home position." << std::endl;
   } 
   else std::cout << COUT_WARN << "\"home_position\" not provided in config file. Not traveling to home." << std::endl;
-
-  arm_->update();
-  arm_->setGoal(arm::Goal::createFromPosition(3.0, Eigen::VectorXd::Map(joint_pos_commands_.data(), joint_pos_commands_.size())));
-
-  while (!arm_->atGoal()) {
-    if (!arm_->update())
-      std::cout << COUT_ERROR << "Could not update arm state! Please check connection" << std::endl;
-    else if (!arm_->send())
-      std::cout << COUT_ERROR << "Could not send commands! Please check connection" << std::endl;
-  }
 
   return CallbackReturn::SUCCESS;
 }
@@ -167,12 +171,20 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_deactivate(const rc
 
 hardware_interface::CallbackReturn HEBIHardwareInterface::on_shutdown(const rclcpp_lifecycle::State & /*previous_state*/) {
   // prepare the robot to stop receiving commands
-  arm_.release();
+  if (arm_) {
+    arm_.release();
+    std::cout << COUT_INFO << "Arm object released during shutdown." << std::endl;
+  }
   return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) {
   // read robot states
+
+  if (!arm_) {
+    std::cout << COUT_ERROR << "Arm object is not initialized!" << std::endl;
+    return hardware_interface::return_type::ERROR;
+  }
 
   if (!arm_->update()) {
     std::cout << COUT_ERROR << "Could not update arm state! Please check connection" << std::endl;
@@ -194,6 +206,12 @@ hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time &
 
 hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) {
   // write robot's commands
+
+  if (!arm_) {
+    std::cout << COUT_ERROR << "Arm object is not initialized!" << std::endl;
+    return hardware_interface::return_type::ERROR;
+  }
+
   auto& command = arm_->pendingCommand();
 
   Eigen::Map<Eigen::VectorXd> pos(joint_pos_commands_.data(), joint_pos_commands_.size());
