@@ -59,7 +59,7 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
   std::cout << COUT_INFO << "Config file: "<< config_file_ << std::endl;
 
   joint_pos_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  joint_vel_commands_.resize(info_.joints.size(), 0.0);
+  joint_vel_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   joint_pos_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   joint_vel_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   joint_acc_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
@@ -135,31 +135,7 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
     return CallbackReturn::ERROR;
   }
 
-  // Check if home position is provided
-  if (arm_config_->getUserData().hasFloatList("home_position")) {
-    std::vector<double> home_pos_command(arm_->size(), std::numeric_limits<double>::quiet_NaN());
-    // Check that home_position has the right length
-    if (arm_config_->getUserData().getFloatList("home_position").size() != info_.joints.size())
-      std::cout << COUT_ERROR << "HEBI config \"user_data\"'s \"home_position\" field must have the same number of elements as degrees of freedom! Ignoring..." << std::endl;
-    else {
-      std::cout << COUT_INFO << "Found and successfully read 'home_position' parameter." << std::endl;
-      home_pos_command = arm_config_->getUserData().getFloatList("home_position");
-    }
-
-    arm_->update();
-    arm_->setGoal(arm::Goal::createFromPosition(3.0, Eigen::VectorXd::Map(home_pos_command.data(), home_pos_command.size())));
-
-    std::cout << COUT_INFO << "Moving arm to home position. Please wait..." << std::endl;
-    while (!arm_->atGoal()) {
-      if (!arm_->update())
-        std::cout << COUT_ERROR << "Could not update arm state! Please check connection" << std::endl;
-      else if (!arm_->send())
-        std::cout << COUT_ERROR << "Could not send commands! Please check connection" << std::endl;
-    }
-
-    std::cout << COUT_INFO << "Arm successfully reached the home position." << std::endl;
-  } 
-  else std::cout << COUT_WARN << "\"home_position\" not provided in config file. Not traveling to home." << std::endl;
+  arm_->update();
 
   return CallbackReturn::SUCCESS;
 }
