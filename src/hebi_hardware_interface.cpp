@@ -45,9 +45,11 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
   }
 
   // Read parameters
+  std::string gripper_joint;
   for (auto i = info_.hardware_parameters.begin(); i != info_.hardware_parameters.end(); i++) {
     if (i->first == "config_pkg") config_pkg_ = i->second;
     if (i->first == "config_file") config_file_ = i->second;
+    if (i->first == "gripper_joint_name") gripper_joint = i->second;
   }
 
   if (config_pkg_.empty() || config_file_.empty()) {
@@ -57,6 +59,20 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
 
   std::cout << COUT_INFO << "Config package: "<< config_pkg_ << std::endl;
   std::cout << COUT_INFO << "Config file: "<< config_file_ << std::endl;
+
+  bool gripper_index_found = false;
+  for (size_t i = 0; i < info_.joints.size(); ++i) {
+    if (info_.joints[i].name == gripper_joint) {
+      gripper_index_ = i;
+      gripper_index_found = true;
+      break;
+    }
+  }
+
+  if (!gripper_index_found) {
+    std::cout << COUT_ERROR << "Gripper joint '" << gripper_joint << "' not found in hardware info! Aborting." << std::endl;
+    return CallbackReturn::ERROR;
+  }
 
   joint_pos_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   joint_vel_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
@@ -129,9 +145,51 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
   }
   std::cout << COUT_INFO << "Arm connected." << std::endl;
 
+  // Setup gripper if it exists
+  bool has_gripper = false;
+  if (arm_config_->getUserData().hasBool("has_gripper")) {
+    has_gripper = arm_config_->getUserData().getBool("has_gripper");
+  }
+  if (has_gripper) {
+    double gripper_close_effort = 1.0;
+    if (arm_config_->getUserData().hasFloat("gripper_close_effort")) {
+      gripper_close_effort = arm_config_->getUserData().getFloat("gripper_close_effort");
+    }
+    double gripper_open_effort = -5.0;
+    if (arm_config_->getUserData().hasFloat("gripper_open_effort")) {
+      gripper_open_effort = arm_config_->getUserData().getFloat("gripper_open_effort");
+    }
+
+    // Create gripper from config
+    gripper_ = arm::Gripper::create(
+      arm_config_->getFamilies()[0],
+      "gripperSpool",
+      gripper_close_effort,
+      gripper_open_effort
+    );
+
+    // Terminate if gripper not found
+    if (!gripper_) {
+      std::cout << COUT_ERROR << "Failed to create gripper!" << std::endl;
+      return CallbackReturn::ERROR;
+    }
+    std::cout << COUT_INFO << "Gripper connected." << std::endl;
+
+    std::string gains_file = arm_config_->getGains("gripper");
+    if (!gains_file.empty()) {
+      std::cout << COUT_INFO << "Loading gripper gains from: " << gains_file << std::endl;
+      if (gripper_->loadGains(gains_file)) {
+        std::cout << COUT_INFO << "Gripper gains loaded successfully." << std::endl;
+      } else {
+        std::cout << COUT_ERROR << "Failed to load gripper gains from: " << gains_file << std::endl;
+        return CallbackReturn::ERROR;
+      }
+    }
+  }
+
   // Check if arm size is same as number of joints
-  if (arm_->size() != info_.joints.size()) {
-    std::cout << COUT_ERROR << "Number of joints in config file does not match number of joints in URDF!" << std::endl;
+  if (arm_->size() + int(gripper_ != nullptr) != info_.joints.size()) {
+    std::cout << COUT_ERROR << "Number of joints in the arm does not match number of joints in URDF!" << std::endl;
     return CallbackReturn::ERROR;
   }
 
@@ -150,6 +208,10 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_shutdown(const rclc
   if (arm_) {
     arm_.release();
     std::cout << COUT_INFO << "Arm object released during shutdown." << std::endl;
+  }
+  if (gripper_) {
+    gripper_.release();
+    std::cout << COUT_INFO << "Gripper object released during shutdown." << std::endl;
   }
   return CallbackReturn::SUCCESS;
 }
@@ -171,10 +233,14 @@ hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time &
   auto vel = arm_->lastFeedback().getVelocity();
   auto acc = arm_->lastFeedback().getEffort();
 
-  for (size_t i = 0; i < info_.joints.size(); ++i) {
-    joint_pos_states_[i] = pos[i];
-    joint_vel_states_[i] = vel[i];
-    joint_acc_states_[i] = acc[i];
+  for (size_t i = 0; i < arm_->size(); ++i) {
+    joint_pos_states_[i + (i >= gripper_index_ ? 1 : 0)] = pos[i];
+    joint_vel_states_[i + (i >= gripper_index_ ? 1 : 0)] = vel[i];
+    joint_acc_states_[i + (i >= gripper_index_ ? 1 : 0)] = acc[i];
+  }
+
+  if (gripper_) {
+    joint_pos_states_[gripper_index_] = gripper_->getState();
   }
 
   return hardware_interface::return_type::OK;
@@ -190,8 +256,13 @@ hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time 
 
   auto& command = arm_->pendingCommand();
 
-  Eigen::Map<Eigen::VectorXd> pos(joint_pos_commands_.data(), joint_pos_commands_.size());
-  Eigen::Map<Eigen::VectorXd> vel(joint_vel_commands_.data(), joint_vel_commands_.size());
+  Eigen::VectorXd pos(arm_->size());
+  Eigen::VectorXd vel(arm_->size());
+
+  for (size_t i = 0; i < arm_->size(); ++i) {
+    pos[i] = joint_pos_commands_[i + (i >= gripper_index_ ? 1 : 0)];
+    vel[i] = joint_vel_commands_[i + (i >= gripper_index_ ? 1 : 0)];
+  }
 
   command.setPosition(pos);
   command.setVelocity(vel);
@@ -199,6 +270,17 @@ hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time 
   if (!arm_->send()) {
     std::cout << COUT_ERROR << "Could not send commands! Please check connection" << std::endl;
     return hardware_interface::return_type::ERROR;
+  }
+
+  if (gripper_) {
+    double gripper_command = joint_pos_commands_[gripper_index_];
+    if (!std::isfinite(gripper_command)) gripper_command = 0.0; // Default to 0.0 if not set
+    gripper_command = std::clamp(gripper_command, 0.0, 1.0); // Ensure command is within [0.0, 1.0]
+    gripper_->setState(gripper_command);
+    if (!gripper_->send()) {
+      std::cout << COUT_ERROR << "Could not send gripper command! Please check connection" << std::endl;
+      return hardware_interface::return_type::ERROR;
+    }
   }
 
   return hardware_interface::return_type::OK;

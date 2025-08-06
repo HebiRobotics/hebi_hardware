@@ -82,7 +82,9 @@ private:
   std::string config_file_;
   std::unique_ptr<hebi::RobotConfig> arm_config_;
 
-  std::unique_ptr<hebi::experimental::arm::Arm> arm_;
+  std::unique_ptr<hebi::arm::Arm> arm_;
+  std::unique_ptr<hebi::arm::Gripper> gripper_;
+  size_t gripper_index_ = 0;
 };
 
 }  // namespace hebi_hardware
