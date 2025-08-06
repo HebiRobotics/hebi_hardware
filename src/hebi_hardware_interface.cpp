@@ -147,23 +147,32 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
   std::cout << COUT_INFO << "Arm connected." << std::endl;
 
   // Setup gripper if it exists
-  if (arm_config_->getUserData().hasBool("has_gripper")) {
-    has_gripper_ = has_gripper_ && arm_config_->getUserData().getBool("has_gripper");
+  auto arm_config_user_data = arm_config_->getUserData();
+  if (arm_config_user_data.hasBool("has_gripper")) {
+    has_gripper_ = has_gripper_ && arm_config_user_data.getBool("has_gripper");
   }
   if (has_gripper_) {
+    std::string gripper_family = arm_config_->getFamilies()[0];
+    if (arm_config_user_data.hasString("gripper_family")) {
+      gripper_family = arm_config_user_data.getString("gripper_family");
+    }
+    std::string gripper_name = "gripperSpool";
+    if (arm_config_user_data.hasString("gripper_name")) {
+      gripper_name = arm_config_user_data.getString("gripper_name");
+    }
     double gripper_close_effort = 1.0;
-    if (arm_config_->getUserData().hasFloat("gripper_close_effort")) {
-      gripper_close_effort = arm_config_->getUserData().getFloat("gripper_close_effort");
+    if (arm_config_user_data.hasFloat("gripper_close_effort")) {
+      gripper_close_effort = arm_config_user_data.getFloat("gripper_close_effort");
     }
     double gripper_open_effort = -5.0;
-    if (arm_config_->getUserData().hasFloat("gripper_open_effort")) {
-      gripper_open_effort = arm_config_->getUserData().getFloat("gripper_open_effort");
+    if (arm_config_user_data.hasFloat("gripper_open_effort")) {
+      gripper_open_effort = arm_config_user_data.getFloat("gripper_open_effort");
     }
 
     // Create gripper from config
     gripper_ = arm::Gripper::create(
-      arm_config_->getFamilies()[0],
-      "gripperSpool",
+      gripper_family,
+      gripper_name,
       gripper_close_effort,
       gripper_open_effort
     );
@@ -171,6 +180,7 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
     // Terminate if gripper not found
     if (!gripper_) {
       std::cout << COUT_ERROR << "Failed to create gripper!" << std::endl;
+      std::cout << COUT_ERROR << "Please check if the gripper is available in the network with the family: " << gripper_family << " and name: " << gripper_name << std::endl;
       return CallbackReturn::ERROR;
     }
     std::cout << COUT_INFO << "Gripper connected." << std::endl;
