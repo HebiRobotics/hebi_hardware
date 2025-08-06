@@ -60,18 +60,19 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware
   std::cout << COUT_INFO << "Config package: "<< config_pkg_ << std::endl;
   std::cout << COUT_INFO << "Config file: "<< config_file_ << std::endl;
 
-  bool gripper_index_found = false;
-  for (size_t i = 0; i < info_.joints.size(); ++i) {
-    if (info_.joints[i].name == gripper_joint) {
-      gripper_index_ = i;
-      gripper_index_found = true;
-      break;
+  if (!gripper_joint.empty()) {
+    for (size_t i = 0; i < info_.joints.size(); ++i) {
+      if (info_.joints[i].name == gripper_joint) {
+        gripper_index_ = i;
+        has_gripper_ = true;
+        break;
+      }
     }
-  }
 
-  if (!gripper_index_found) {
-    std::cout << COUT_ERROR << "Gripper joint '" << gripper_joint << "' not found in hardware info! Aborting." << std::endl;
-    return CallbackReturn::ERROR;
+    if (!has_gripper_) {
+      std::cout << COUT_ERROR << "Gripper joint '" << gripper_joint << "' not found in hardware info! Aborting." << std::endl;
+      return CallbackReturn::ERROR;
+    }
   }
 
   joint_pos_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
@@ -146,11 +147,10 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
   std::cout << COUT_INFO << "Arm connected." << std::endl;
 
   // Setup gripper if it exists
-  bool has_gripper = false;
   if (arm_config_->getUserData().hasBool("has_gripper")) {
-    has_gripper = arm_config_->getUserData().getBool("has_gripper");
+    has_gripper_ = has_gripper_ && arm_config_->getUserData().getBool("has_gripper");
   }
-  if (has_gripper) {
+  if (has_gripper_) {
     double gripper_close_effort = 1.0;
     if (arm_config_->getUserData().hasFloat("gripper_close_effort")) {
       gripper_close_effort = arm_config_->getUserData().getFloat("gripper_close_effort");
@@ -188,7 +188,7 @@ hardware_interface::CallbackReturn HEBIHardwareInterface::on_activate(const rclc
   }
 
   // Check if arm size is same as number of joints
-  if (arm_->size() + int(gripper_ != nullptr) != info_.joints.size()) {
+  if (arm_->size() + (has_gripper_ ? 1 : 0) != info_.joints.size()) {
     std::cout << COUT_ERROR << "Number of joints in the arm does not match number of joints in URDF!" << std::endl;
     return CallbackReturn::ERROR;
   }
@@ -234,9 +234,9 @@ hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time &
   auto acc = arm_->lastFeedback().getEffort();
 
   for (size_t i = 0; i < arm_->size(); ++i) {
-    joint_pos_states_[i + (i >= gripper_index_ ? 1 : 0)] = pos[i];
-    joint_vel_states_[i + (i >= gripper_index_ ? 1 : 0)] = vel[i];
-    joint_acc_states_[i + (i >= gripper_index_ ? 1 : 0)] = acc[i];
+    joint_pos_states_[i + (has_gripper_ && i >= gripper_index_ ? 1 : 0)] = pos[i];
+    joint_vel_states_[i + (has_gripper_ && i >= gripper_index_ ? 1 : 0)] = vel[i];
+    joint_acc_states_[i + (has_gripper_ && i >= gripper_index_ ? 1 : 0)] = acc[i];
   }
 
   if (gripper_) {
@@ -260,8 +260,8 @@ hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time 
   Eigen::VectorXd vel(arm_->size());
 
   for (size_t i = 0; i < arm_->size(); ++i) {
-    pos[i] = joint_pos_commands_[i + (i >= gripper_index_ ? 1 : 0)];
-    vel[i] = joint_vel_commands_[i + (i >= gripper_index_ ? 1 : 0)];
+    pos[i] = joint_pos_commands_[i + (has_gripper_ && i >= gripper_index_ ? 1 : 0)];
+    vel[i] = joint_vel_commands_[i + (has_gripper_ && i >= gripper_index_ ? 1 : 0)];
   }
 
   command.setPosition(pos);
