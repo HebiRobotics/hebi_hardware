@@ -84,6 +84,7 @@ private:
 
   std::unique_ptr<hebi::arm::Arm> arm_;
   std::unique_ptr<hebi::arm::Gripper> gripper_;
+  bool has_gripper_ = false;
   size_t gripper_index_ = 0;
 };
 
