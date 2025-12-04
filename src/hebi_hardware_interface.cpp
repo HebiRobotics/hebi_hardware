@@ -39,8 +39,8 @@ std::vector<std::string> split(const std::string &s, char delim) {
 
 namespace hebi_hardware {
 
-hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware_interface::HardwareInfo & info) {
-  if (hardware_interface::SystemInterface::on_init(info) != CallbackReturn::SUCCESS) {
+hardware_interface::CallbackReturn HEBIHardwareInterface::on_init(const hardware_interface::HardwareComponentInterfaceParams & params) {
+  if (hardware_interface::SystemInterface::on_init(params) != CallbackReturn::SUCCESS) {
     return CallbackReturn::ERROR;
   }
 
