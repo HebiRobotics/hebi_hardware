@@ -23,13 +23,15 @@ target_include_directories(
   hebi_hardware
   PUBLIC
   include
+  ${hebi_cpp_api_INCLUDE_DIRS}
 )
-ament_target_dependencies(
+target_link_libraries(
   hebi_hardware
-  hardware_interface
-  rclcpp
-  rclcpp_lifecycle
-  hebi_cpp_api
+  PUBLIC
+  hardware_interface::hardware_interface
+  rclcpp::rclcpp
+  rclcpp_lifecycle::rclcpp_lifecycle
+  ${hebi_cpp_api_LIBRARIES}
 )
 # prevent pluginlib from using boost
 target_compile_definitions(hebi_hardware PUBLIC "PLUGINLIB__DISABLE_BOOST_FUNCTIONS")
