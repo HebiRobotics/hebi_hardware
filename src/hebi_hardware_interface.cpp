@@ -250,7 +250,7 @@ hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time &
   }
 
   if (gripper_) {
-    joint_pos_states_[gripper_index_] = gripper_->getState();
+    joint_pos_states_[gripper_index_] = gripper_->getState() * 0.365 * M_PI; // Convert from [0.0, 1.0] to radians (max ~65 degrees)
   }
 
   return hardware_interface::return_type::OK;
