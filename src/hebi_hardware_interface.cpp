@@ -250,7 +250,7 @@ hardware_interface::return_type HEBIHardwareInterface::read(const rclcpp::Time &
   }
 
   if (gripper_) {
-    joint_pos_states_[gripper_index_] = gripper_->getState();
+    joint_pos_states_[gripper_index_] = gripper_->getState() * 0.365 * M_PI; // Convert from [0.0, 1.0] to radians (max ~65 degrees)
   }
 
   return hardware_interface::return_type::OK;
@@ -283,7 +283,7 @@ hardware_interface::return_type HEBIHardwareInterface::write(const rclcpp::Time 
   }
 
   if (gripper_) {
-    double gripper_command = joint_pos_commands_[gripper_index_];
+    double gripper_command = joint_pos_commands_[gripper_index_] / (0.365 * M_PI); // Convert from radians to [0.0, 1.0] (max ~65 degrees)
     if (!std::isfinite(gripper_command)) gripper_command = 0.0; // Default to 0.0 if not set
     gripper_command = std::clamp(gripper_command, 0.0, 1.0); // Ensure command is within [0.0, 1.0]
     gripper_->setState(gripper_command);
